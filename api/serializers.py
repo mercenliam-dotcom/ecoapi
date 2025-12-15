@@ -32,40 +32,62 @@ class DepartamentoSerializer(serializers.ModelSerializer):
 
         perfil = UserProfile.objects.filter(user=user).first()
         if not perfil:
-            raise serializers.ValidationError("El usuario no tiene perfil asociado.")
+            raise serializers.ValidationError(
+                "El usuario no tiene perfil asociado."
+            )
 
-        # ----------------------------
-        # VALIDACIÓN DE DOMINIO
-        # ----------------------------
+        # ==================================================
+        #  VALIDACIÓN DE DOMINIO (ADMIN)
+        # ==================================================
         if perfil.rol == "ADMIN":
-            if attrs["edificio"] != perfil.edificio:
+            edificio = attrs.get(
+                "edificio",
+                self.instance.edificio if self.instance else None
+            )
+
+            if edificio != perfil.edificio:
                 raise serializers.ValidationError(
-                    "No puedes crear departamentos en otro edificio."
+                    "No puedes crear o modificar departamentos en otro edificio."
                 )
 
-            operador = attrs["operador"]
+            operador = attrs.get(
+                "operador",
+                self.instance.operador if self.instance else None
+            )
+
             operador_perfil = UserProfile.objects.filter(user=operador).first()
             if not operador_perfil or operador_perfil.edificio != perfil.edificio:
                 raise serializers.ValidationError(
                     "No puedes asignar un operador de otro edificio."
                 )
 
-        # ----------------------------
-        # VALIDACIÓN NÚMERO ÚNICO POR EDIFICIO
-        # ----------------------------
-        edificio = attrs.get("edificio")
-        numero = attrs.get("numero")
+        # ==================================================
+        #  VALIDACIÓN: NÚMERO ÚNICO POR EDIFICIO
+        #  (FUNCIONA CON POST / PUT / PATCH)
+        # ==================================================
+        edificio = attrs.get(
+            "edificio",
+            self.instance.edificio if self.instance else None
+        )
+        numero = attrs.get(
+            "numero",
+            self.instance.numero if self.instance else None
+        )
 
-        qs = Departamento.objects.filter(edificio=edificio, numero=numero)
+        if edificio and numero:
+            qs = Departamento.objects.filter(
+                edificio=edificio,
+                numero=numero
+            )
 
-        # En caso de UPDATE (PUT / PATCH)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
+            # Excluir el mismo registro en UPDATE
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
 
-        if qs.exists():
-            raise serializers.ValidationError({
-                "numero": "Ya existe un departamento con este número en el edificio."
-            })
+            if qs.exists():
+                raise serializers.ValidationError({
+                    "numero": "Ya existe un departamento con este número en el edificio."
+                })
 
         return attrs
 
